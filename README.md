@@ -8,6 +8,8 @@ This version of the MADDPG implementation references Phil's version. Here is Phi
 
 此版本的MADDPG实现参考了Phil的版本，这是Phil的Youtube频道@Machine Learning with Phil，感谢Phil！
 
+Welcome to visit my [Github Pages](https://yuemingyuecn.github.io/)
+
 欢迎访问我的[GithubPages](https://yuemingyuecn.github.io/)
 #### Notice（注意）:
 The neural network architecture in this version is arbitrarily designed, and users need to customize the network layers according to their specific reinforcement learning tasks
