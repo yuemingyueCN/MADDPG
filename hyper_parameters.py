@@ -3,14 +3,6 @@ import argparse
 Notice:
     自行补充参数数据
 """
-def parse_args_uav():
-    parser = argparse.ArgumentParser("UAV env Hyper Parameters")
-    parser.add_argument("--num_red", type=int, default=10, help="numb of red uavs")
-    parser.add_argument("--num_blue", type=int, default=10, help="numb of blue uavs")
-    parser.add_argument("--test", type=str, default="this is a test", help="test")
-
-    return parser.parse_args()
-
 def parse_args_maddpg():
     parser = argparse.ArgumentParser("MADDGP Framworks Hyper Parasmeters")
     parser.add_argument("--alpha", type=float, default=None, help="ActorNetwork learning rate")
@@ -29,5 +21,3 @@ def parse_args_maddpg():
     parser.add_argument("--buffer_batch_size", type=int , default=None, help="maddpg learn batch_size")
 
     return parser.parse_args()
-
-
