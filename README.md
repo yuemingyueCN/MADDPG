@@ -3,10 +3,10 @@ A generally applicable implementation of the Multi-Agent Deep Deterministic Poli
 
 大部分强化学习环境通用的MADDPG算法实现
 
-This version of the MADDPG implementation references Mr. Phil's version. Here is Mr. Phil's YouTube channel@Machine Learning with Phil, thanks again to Mr. Phil!
+This version of the MADDPG implementation references Mr. Phil's version. Here is Mr. Phil's YouTube channel@Machine Learning with Phil, thanks to Mr. Phil!
 
 
-此版本的MADDPG实现参考了Phil先生的版本，这是Phil先生的Youtube频道@Machine Learning with Phil，再次感谢Phil先生！
+此版本的MADDPG实现参考了Phil先生的版本，这是Phil先生的Youtube频道@Machine Learning with Phil，感谢Phil先生！
 
 #### Notice（注意）:
 The neural network architecture in this version is arbitrarily designed, and users need to customize the network layers according to their specific reinforcement learning tasks
