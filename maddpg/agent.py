@@ -33,11 +33,12 @@ class Agent:
                                     n_agents=self.n_agents, n_actions=self.n_actions,
                                     name=self.agent_name+'_target_critic.pth', chkpt_dir=self.chkpt_dir)
 
-        self.update_network_parameters()
+        self.update_network_parameters(tau_=1)
 
     # 这一步进行 soft update
-    def update_network_parameters(self):
-        tau = self.tau
+    def update_network_parameters(self, tau_=None):
+        if tau_ is None:
+            tau_ = self.tau
         
         # 对 target_actor soft update
         target_actor_params = self.target_actor.named_parameters()
@@ -47,8 +48,8 @@ class Agent:
         actor_state_dict = dict(actor_params)
 
         for name in actor_state_dict:
-            actor_state_dict[name] = tau*actor_state_dict[name].clone() + \
-                    (1-tau)*target_actor_state_dict[name].clone()
+            actor_state_dict[name] = tau_*actor_state_dict[name].clone() + \
+                    (1-tau_)*target_actor_state_dict[name].clone()
             
         self.target_actor.load_state_dict(actor_state_dict)
 
@@ -59,8 +60,8 @@ class Agent:
         target_critic_state_dict = dict(target_critic_params)
         critic_state_dict = dict(critic_params)
         for name in critic_state_dict:
-            critic_state_dict[name] = tau*critic_state_dict[name].clone() + \
-                    (1-tau)*target_critic_state_dict[name].clone()
+            critic_state_dict[name] = tau_*critic_state_dict[name].clone() + \
+                    (1-tau_)*target_critic_state_dict[name].clone()
 
         self.target_critic.load_state_dict(critic_state_dict)
 
