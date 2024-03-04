@@ -88,94 +88,85 @@ class MADDPG:
             actions.append(action)
         return actions
 
-    def learn(self):
+    def learn(self, writer, step):
         if not self.buffer.ready():
             return
 
+        # 这里增加一个高斯噪声判定迭代器 每迭代一次 +1
+        self.noise_count = self.noise_count + 1
+        if self.noise_count >= self.noise_max:
+            self.noise = False
+
+        # 把数据从经验池中 buffer 出来
         critic_states, actor_states, actions, rewards, \
         critic_states_next, actor_states_next, terminal = self.buffer.sample_buffer()
 
+        # 转成 torch tensor
         critic_states = torch.tensor(critic_states, dtype=torch.float).to(self.device)
-
-        actions_list = []
-        for idx in range(self.n_agents):
-            actions_list.append(torch.tensor(actions[idx], dtype=torch.float).to(self.device))
-
         rewards = torch.tensor(rewards, dtype=torch.float).to(self.device)
         critic_states_next = torch.tensor(critic_states_next, dtype=torch.float).to(self.device)
         terminal = torch.tensor(terminal).to(self.device)
 
-        all_agents_new_actions = []
-        all_agents_new_mu_actions = []
-        old_agents_actions = []
+        for idx in range(self.n_agents):
+            actor_states[idx] = torch.tensor(actor_states[idx], dtype=torch.float).to(self.device)
+            actions[idx] = torch.tensor(actions[idx], dtype=torch.float).to(self.device)
+            actor_states_next[idx] = torch.tensor(actor_states_next[idx], dtype=torch.float).to(self.device)
 
+        actions_next = []
+        with torch.no_grad():
+            for agent_idx, agent in enumerate(self.agents):
+                # 根据 s_ 和 target_network 求得 a_
+                new_pi = agent.target_actor.forward(actor_states_next[agent_idx])
+                actions_next.append(new_pi)
+                
+        # 用于 critic 网络的动作 tensor
+        new_actions_tensor = torch.cat([acts for acts in actions_next], dim=1)
+        old_actions_tensor = torch.cat([acts for acts in actions], dim=1)
+
+        # 循环梯度计算更新
+        # 遍历每一个智能体 agent
         for agent_idx, agent in enumerate(self.agents):
-            new_states = torch.tensor(actor_states_next[agent_idx], dtype=torch.float).to(self.device)
-            new_pi = agent.target_actor.forward(new_states)
-            all_agents_new_actions.append(new_pi)
-
-            mu_states = torch.tensor(actor_states[agent_idx], dtype=torch.float).to(self.device)
-            pi = agent.actor.forward(mu_states)
-            all_agents_new_mu_actions.append(pi)
-
-            old_agents_actions.append(actions_list[agent_idx])
-
-        new_actions = torch.cat([acts for acts in all_agents_new_actions], dim=1)
-        mu = torch.cat([acts for acts in all_agents_new_mu_actions], dim=1)
-        old_actions = torch.cat([acts for acts in old_agents_actions],dim=1)
-        
-        for agent_idx, agent in enumerate(self.agents):
-            critic_value_ = agent.target_critic.forward(critic_states_next, new_actions).flatten()
-            critic_value_[terminal[:, agent_idx]] = 0.0
-            critic_value = agent.critic.forward(critic_states, old_actions).flatten()
-
-            target = rewards[:, agent_idx] + agent.gamma * critic_value_
-            critic_loss = F.mse_loss(target, critic_value)
+            """
+            更新 critic
+            """
+            # 计算 target_Q
+            with torch.no_grad():
+                critic_value_ = agent.target_critic.forward(critic_states_next, new_actions_tensor).flatten()
+                critic_value_[terminal[:, agent_idx]] = 0.0
+                target_Q = rewards[:, agent_idx] + agent.gamma * critic_value_
+            # 计算 current_Q
+            current_Q = agent.critic.forward(critic_states, old_actions_tensor).flatten()
+            critic_loss = F.mse_loss(target_Q, current_Q)
             agent.critic.optimizer.zero_grad()
-            critic_loss.backward(retain_graph=True)
+            critic_loss.backward()
+            agent.critic.optimizer.step()
 
-            # 保存模型的梯度
-            gradient_dict = {}
-            for name, param in agent.critic.named_parameters():
-                if param.grad is not None:
-                    gradient_dict[name] = param.grad.clone()
-            # 保存梯度到 list
-            self.gradient_list.append(gradient_dict)
+            if agent.agent_name == "agent_0":
+                writer.add_scalar('loss/agent_0_critic_loss', critic_loss.item(), step)
+            if agent.agent_name == "agent_1":
+                writer.add_scalar('loss/agent_1_critic_loss', critic_loss.item(), step)
+            if agent.agent_name == "agent_2":
+                writer.add_scalar('loss/agent_2_critic_loss', critic_loss.item(), step)
 
-            actor_loss = agent.critic.forward(critic_states, mu).flatten()
+            """
+            更新 actor
+            """
+            # 重新选择动作 其余智能体动作不变
+            tmp_actions = [t.clone().detach() for t in actions]
+            tmp_actions[agent_idx] = agent.actor(actor_states[agent_idx])
+            ten_actions_tensor = torch.cat([acts for acts in tmp_actions], dim=1)
+            actor_loss = agent.critic.forward(critic_states, ten_actions_tensor).flatten()
             actor_loss = -torch.mean(actor_loss)
             agent.actor.optimizer.zero_grad()
-            actor_loss.backward(retain_graph=True)
-
-            # 保存模型的梯度
-            gradient_dict = {}
-            for name, param in agent.actor.named_parameters():
-                if param.grad is not None:
-                    gradient_dict[name] = param.grad.clone()
-            # 保存梯度到 list
-            self.gradient_list.append(gradient_dict)
-
-        for agent_idx, agent in enumerate(self.agents):
-            # 为模型的参数设置梯度
-            for name, param in agent.critic.named_parameters():
-                if name in self.gradient_list[agent_idx * 2]:
-                    param.grad = self.gradient_list[agent_idx * 2][name]
-
-            # 为模型的参数设置梯度
-            for name, param in agent.actor.named_parameters():
-                if name in self.gradient_list[agent_idx * 2 + 1]:
-                    param.grad = self.gradient_list[agent_idx * 2 + 1][name]
-
-            # 更新模型的参数
-            agent.critic.optimizer.step()
+            actor_loss.backward()
             agent.actor.optimizer.step()
-        """
-        把 self.gradient_list 归零
-        否则加载的梯度一直是初始的梯度值
-        self.gradient_list 会一直累加
-        """
-        # print(len(self.gradient_list))
-        self.gradient_list = []
+
+            if agent.agent_name == "agent_0":
+                writer.add_scalar('loss/agent_0_actor_loss', actor_loss.item(), step)
+            if agent.agent_name == "agent_1":
+                writer.add_scalar('loss/agent_1_actor_loss', actor_loss.item(), step)
+            if agent.agent_name == "agent_2":
+                writer.add_scalar('loss/agent_2_actor_loss', actor_loss.item(), step)
 
         # 最后统一对 target_networks 进行软更新
         for idx, agent in enumerate(self.agents):
